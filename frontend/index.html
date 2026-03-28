@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GhostAudit — Welfare Fraud Detection</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ─── Reset & Variables ──────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:    #0a0f1e;
+  --s1:    #0f172a;
+  --s2:    #1e2d45;
+  --s3:    #2d4060;
+  --s4:    #3d5275;
+  --txt:   #e8edf5;
+  --sub:   #8ba0bb;
+  --dim:   #506070;
+  --blue:  #4e8ef7;
+  --blue2: #2d6de0;
+  --red:   #e85555;
+  --green: #34c97a;
+  --amber: #f0a843;
+  --purple:#9b6cf7;
+  --r:     12px;
+  --r2:    7px;
+}
+body {
+  background: var(--bg);
+  color: var(--txt);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+button { cursor: pointer; border: none; font-family: inherit; outline: none; }
+a { color: var(--blue); text-decoration: none; }
+
+/* ─── Status Bar ─────────────────────────────────────── */
+#status-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 20px; font-size: 12px; font-weight: 500;
+  border-bottom: 1px solid var(--s2);
+  background: var(--s1);
+  transition: background .3s;
+}
+#status-bar.ok-ai     { background: rgba(52,201,122,.08); border-color: rgba(52,201,122,.25); }
+#status-bar.ok-noai   { background: rgba(240,168,67,.06); border-color: rgba(240,168,67,.2); }
+#status-bar.no-backend{ background: rgba(232,85,85,.07);  border-color: rgba(232,85,85,.2); }
+.sb-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: blink 2.2s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+/* ─── Screens ────────────────────────────────────────── */
+.screen { display: none; min-height: calc(100vh - 36px); flex-direction: column; }
+.screen.active { display: flex; }
+
+/* ─── Upload Screen ──────────────────────────────────── */
+#upload-screen {
+  align-items: center; justify-content: center;
+  padding: 48px 20px; text-align: center; gap: 0;
+}
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600; letter-spacing: 1.8px;
+  text-transform: uppercase; color: var(--blue);
+  background: rgba(78,142,247,.1); border: 1px solid rgba(78,142,247,.25);
+  padding: 5px 14px; border-radius: 99px; margin-bottom: 24px;
+}
+.hero-title {
+  font-size: clamp(28px, 5vw, 52px);
+  font-weight: 800; line-height: 1.1;
+  letter-spacing: -2px; margin-bottom: 16px;
+}
+.hero-title em { font-style: normal; color: var(--blue); }
+.hero-desc {
+  font-size: 15px; color: var(--sub); max-width: 520px;
+  line-height: 1.75; margin-bottom: 36px;
+}
+.hero-stats {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  justify-content: center; margin-bottom: 44px;
+}
+.stat-card {
+  background: var(--s1); border: 1px solid var(--s2);
+  border-radius: var(--r); padding: 16px 24px; min-width: 148px;
+  position: relative; overflow: hidden;
+}
+.stat-card::after {
+  content: ''; position: absolute; inset: 0 0 auto 0;
+  height: 2px; background: var(--blue); opacity: .5;
+}
+.stat-val { font-size: 26px; font-weight: 800; letter-spacing: -1px; }
+.stat-lbl { font-size: 11px; color: var(--sub); margin-top: 3px; }
+.upload-zone {
+  width: 100%; max-width: 480px;
+  border: 2px dashed var(--s3); border-radius: var(--r);
+  padding: 40px 24px; cursor: pointer;
+  transition: all .2s ease; margin-bottom: 14px;
+  position: relative; background: rgba(255,255,255,.01);
+}
+.upload-zone:hover, .upload-zone.over {
+  border-color: var(--blue); background: rgba(78,142,247,.04);
+}
+.upload-zone input {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer;
+  width: 100%; height: 100%;
+}
+.upload-icon { font-size: 32px; margin-bottom: 12px; display: block; }
+.upload-main { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.upload-hint { font-size: 13px; color: var(--sub); line-height: 1.6; }
+.upload-hint span { color: var(--blue); font-weight: 500; }
+.btn-demo {
+  background: transparent; border: 1px solid var(--s3);
+  color: var(--sub); padding: 10px 24px; border-radius: var(--r2);
+  font-size: 13px; transition: all .2s; margin-bottom: 10px;
+}
+.btn-demo:hover { border-color: var(--blue); color: var(--blue); }
+#ai-notice { font-size: 12px; color: var(--dim); margin-top: 4px; }
+
+/* ─── Progress Screen ────────────────────────────────── */
+#progress-screen {
+  align-items: center; justify-content: center; gap: 24px;
+}
+.pg-title { font-size: 18px; font-weight: 700; }
+.pg-file  { font-size: 12px; color: var(--sub); }
+.pg-pct   { font-size: 44px; font-weight: 800; color: var(--blue); }
+.pg-track {
+  width: 100%; max-width: 420px; height: 5px;
+  background: var(--s2); border-radius: 99px; overflow: hidden;
+}
+.pg-fill  { height: 5px; background: var(--blue); border-radius: 99px; width: 0; transition: width .4s ease; }
+.pg-steps { display: flex; flex-direction: column; gap: 9px; width: 100%; max-width: 380px; }
+.pg-step  { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--dim); }
+.pg-step.active { color: var(--txt); }
+.pg-step.done   { color: var(--green); }
+.pg-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); transition: background .3s; }
+.pg-step.active .pg-dot { background: var(--blue); }
+.pg-step.done   .pg-dot { background: var(--green); }
+
+/* ─── Dashboard ──────────────────────────────────────── */
+#dash-screen { flex-direction: column; }
+.dash-nav {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px; background: var(--s1);
+  border-bottom: 1px solid var(--s2); flex-shrink: 0;
+}
+.nav-brand {
+  font-size: 14px; font-weight: 700; letter-spacing: -.3px;
+  display: flex; align-items: center; gap: 8px;
+}
+.live-dot { width: 7px; height: 7px; background: var(--green); border-radius: 50%; animation: blink 2s infinite; }
+.nav-right { display: flex; align-items: center; gap: 10px; }
+.ai-badge {
+  font-size: 11px; font-weight: 600; padding: 3px 10px;
+  border-radius: 99px;
+}
+.ai-badge.on  { background: rgba(52,201,122,.12); color: var(--green); border: 1px solid rgba(52,201,122,.25); }
+.ai-badge.off { background: rgba(240,168,67,.1);  color: var(--amber); border: 1px solid rgba(240,168,67,.25); }
+.btn-new {
+  background: var(--blue); color: #fff;
+  padding: 7px 16px; border-radius: var(--r2);
+  font-size: 12px; font-weight: 600; transition: background .2s;
+}
+.btn-new:hover { background: var(--blue2); }
+
+/* KPI Bar */
+.kpi-row {
+  display: grid; grid-template-columns: repeat(4,1fr);
+  gap: 1px; background: var(--s2); flex-shrink: 0;
+}
+.kpi { background: var(--s1); padding: 15px 20px; }
+.kpi-label {
+  font-size: 10px; color: var(--sub); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .6px; margin-bottom: 5px;
+}
+.kpi-val { font-size: 26px; font-weight: 800; letter-spacing: -1px; }
+.kpi-sub { font-size: 11px; color: var(--dim); margin-top: 2px; }
+
+/* Tabs */
+.tabs-bar {
+  display: flex; background: var(--s1);
+  border-bottom: 1px solid var(--s2); padding: 0 20px;
+  flex-shrink: 0;
+}
+.tab {
+  padding: 11px 16px; font-size: 13px; font-weight: 500;
+  color: var(--sub); background: transparent;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: all .2s;
+}
+.tab:hover { color: var(--txt); }
+.tab.on { color: var(--blue); border-bottom-color: var(--blue); }
+.dash-body { flex: 1; overflow: auto; padding: 20px; }
+.view { display: none; }
+.view.on { display: block; }
+
+/* Panels */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.panel {
+  background: var(--s1); border: 1px solid var(--s2);
+  border-radius: var(--r); padding: 18px;
+}
+.panel-title {
+  font-size: 11px; font-weight: 600; color: var(--sub);
+  text-transform: uppercase; letter-spacing: .5px; margin-bottom: 14px;
+}
+.ch-wrap { position: relative; height: 200px; }
+
+/* Table */
+.tbar {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 14px; flex-wrap: wrap;
+}
+.t-search {
+  background: var(--s2); border: 1px solid var(--s3);
+  color: var(--txt); padding: 8px 13px;
+  border-radius: var(--r2); font-size: 13px; width: 230px;
+  transition: border-color .2s;
+}
+.t-search:focus { outline: none; border-color: var(--blue); }
+.t-search::placeholder { color: var(--dim); }
+.t-sel {
+  background: var(--s2); border: 1px solid var(--s3);
+  color: var(--txt); padding: 8px 10px;
+  border-radius: var(--r2); font-size: 13px;
+}
+.t-count { margin-left: auto; font-size: 12px; color: var(--dim); }
+.table-wrap {
+  overflow-x: auto; border-radius: var(--r);
+  border: 1px solid var(--s2);
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead tr { background: var(--s2); }
+th {
+  padding: 10px 13px; text-align: left; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .5px; color: var(--sub);
+  cursor: pointer; white-space: nowrap;
+}
+th:hover { color: var(--txt); }
+tbody tr { border-top: 1px solid var(--s2); cursor: pointer; transition: background .1s; }
+tbody tr:hover { background: var(--s2); }
+td { padding: 11px 13px; }
+.badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 9px; border-radius: 99px;
+  font-size: 10px; font-weight: 700;
+}
+.badge-HIGH   { background: rgba(232,85,85,.12);  color: var(--red);    border: 1px solid rgba(232,85,85,.25); }
+.badge-MEDIUM { background: rgba(240,168,67,.1);  color: var(--amber);  border: 1px solid rgba(240,168,67,.25); }
+.badge-LOW    { background: rgba(52,201,122,.1);  color: var(--green);  border: 1px solid rgba(52,201,122,.25); }
+.score-bar { display: flex; align-items: center; gap: 7px; }
+.sbar-track { height: 4px; flex: 1; background: var(--s3); border-radius: 2px; overflow: hidden; }
+.sbar-fill  { height: 4px; border-radius: 2px; }
+.anom-pill {
+  background: var(--s2); color: var(--sub);
+  font-size: 10px; padding: 2px 7px;
+  border-radius: 4px; display: inline-block; margin: 1px;
+}
+.pagination { display: flex; gap: 6px; margin-top: 14px; justify-content: flex-end; }
+.pg-btn {
+  background: var(--s2); border: 1px solid var(--s3);
+  color: var(--txt); padding: 5px 11px;
+  border-radius: var(--r2); font-size: 12px; transition: all .15s;
+}
+.pg-btn:hover, .pg-btn.on {
+  background: var(--blue); border-color: var(--blue); color: #fff;
+}
+
+/* Graph */
+#cy {
+  width: 100%; height: 580px;
+  background: var(--s1); border: 1px solid var(--s2);
+  border-radius: var(--r); position: relative;
+}
+.graph-legend { display: flex; gap: 16px; margin-bottom: 10px; flex-wrap: wrap; }
+.gl-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--sub); }
+.gl-dot  { width: 9px; height: 9px; border-radius: 50%; }
+.graph-tip {
+  position: absolute; background: var(--s1); border: 1px solid var(--s3);
+  border-radius: var(--r2); padding: 10px 13px; font-size: 12px;
+  pointer-events: none; z-index: 10; min-width: 160px;
+  display: none; line-height: 1.7; box-shadow: 0 4px 16px rgba(0,0,0,.4);
+}
+
+/* ─── Sidebar ─────────────────────────────────────────── */
+#sidebar {
+  position: fixed; top: 0; right: -490px; width: 460px;
+  height: 100vh; background: var(--s1); border-left: 1px solid var(--s2);
+  z-index: 200; display: flex; flex-direction: column;
+  transition: right .28s cubic-bezier(.4,0,.2,1); overflow: hidden;
+}
+#sidebar.open { right: 0; box-shadow: -20px 0 60px rgba(0,0,0,.5); }
+.sb-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--s2); flex-shrink: 0;
+}
+.sb-title { font-size: 14px; font-weight: 600; }
+.sb-close {
+  background: var(--s2); color: var(--sub);
+  width: 28px; height: 28px; border-radius: 6px;
+  font-size: 14px; display: flex; align-items: center;
+  justify-content: center; transition: all .15s;
+}
+.sb-close:hover { background: var(--s3); color: var(--txt); }
+.sb-body { flex: 1; overflow-y: auto; padding: 20px; }
+
+/* Risk Ring */
+.ring-wrap { position: relative; width: 100px; height: 100px; margin: 0 auto 16px; }
+.ring-wrap svg { transform: rotate(-90deg); }
+.ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ring-val { font-size: 22px; font-weight: 800; }
+.ring-lbl { font-size: 8px; color: var(--sub); font-weight: 700; letter-spacing: 1px; }
+.case-name { text-align: center; font-size: 17px; font-weight: 700; margin-bottom: 3px; }
+.case-meta { text-align: center; font-size: 12px; color: var(--sub); margin-bottom: 20px; }
+
+/* Sections */
+.section { margin-bottom: 18px; }
+.section-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .7px; color: var(--sub); margin-bottom: 8px;
+}
+.anom-row {
+  display: flex; gap: 9px; align-items: flex-start;
+  background: rgba(232,85,85,.05); border: 1px solid rgba(232,85,85,.14);
+  border-radius: var(--r2); padding: 9px 12px;
+  font-size: 12px; line-height: 1.55; margin-bottom: 5px;
+}
+.anom-icon { color: var(--red); flex-shrink: 0; margin-top: 1px; }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.detail-cell { background: var(--s2); border-radius: var(--r2); padding: 10px 12px; }
+.detail-label { font-size: 10px; color: var(--sub); font-weight: 600; text-transform: uppercase; letter-spacing: .3px; margin-bottom: 3px; }
+.detail-val   { font-size: 12px; font-weight: 600; word-break: break-all; }
+
+/* AI Analysis Box */
+.ai-panel {
+  background: linear-gradient(135deg, rgba(78,142,247,.05) 0%, rgba(30,45,69,.5) 100%);
+  border: 1px solid rgba(78,142,247,.2);
+  border-radius: var(--r); padding: 16px; margin-bottom: 12px;
+}
+.ai-header {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11px; font-weight: 700; color: var(--blue);
+  text-transform: uppercase; letter-spacing: .6px; margin-bottom: 12px;
+}
+.ai-pulse {
+  width: 6px; height: 6px; background: var(--blue);
+  border-radius: 50%; animation: blink 1.5s infinite;
+}
+.ai-text { font-size: 13px; line-height: 1.8; color: var(--txt); }
+.fraud-tag {
+  display: inline-block; margin-top: 10px;
+  background: rgba(232,85,85,.1); border: 1px solid rgba(232,85,85,.25);
+  color: var(--red); font-size: 11px; font-weight: 700;
+  padding: 3px 11px; border-radius: 99px;
+}
+.info-block {
+  border-radius: var(--r2); padding: 11px 13px; margin-top: 9px; font-size: 12px; line-height: 1.65;
+}
+.info-block.green { background: rgba(52,201,122,.05); border: 1px solid rgba(52,201,122,.18); }
+.info-block.amber { background: rgba(240,168,67,.05); border: 1px solid rgba(240,168,67,.18); }
+.info-block.blue  { background: rgba(78,142,247,.05); border: 1px solid rgba(78,142,247,.18); }
+.info-block-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .5px; margin-bottom: 4px;
+}
+.info-block.green .info-block-label { color: var(--green); }
+.info-block.amber .info-block-label { color: var(--amber); }
+.info-block.blue  .info-block-label { color: var(--blue);  }
+.ai-provider { font-size: 10px; color: var(--dim); text-align: right; margin-top: 8px; }
+
+/* Action Buttons */
+.btn-freeze {
+  width: 100%; background: var(--red); color: #fff;
+  padding: 12px; border-radius: var(--r2); font-size: 13px;
+  font-weight: 600; margin-top: 14px; transition: background .2s;
+}
+.btn-freeze:hover { background: #cc3b3b; }
+.btn-report {
+  width: 100%; background: transparent;
+  border: 1px solid var(--s3); color: var(--sub);
+  padding: 10px; border-radius: var(--r2);
+  font-size: 13px; margin-top: 8px; transition: all .2s;
+}
+.btn-report:hover { border-color: var(--blue); color: var(--blue); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
+
+/* Responsive */
+@media(max-width:700px) {
+  .kpi-row { grid-template-columns: repeat(2,1fr); }
+  .grid-2  { grid-template-columns: 1fr; }
+  #sidebar { width: 100%; right: -100%; }
+}
+</style>
+</head>
+<body>
+
+<!-- STATUS BAR -->
+<div id="status-bar" class="checking">
+  <div class="sb-dot" style="color:var(--dim)"></div>
+  <span id="status-text">Connecting to analysis server...</span>
+</div>
+
+<!-- ═══ UPLOAD SCREEN ═══════════════════════════════════════════ -->
+<div id="upload-screen" class="screen active">
+  <div class="hero-eyebrow">
+    <span>●</span> AI-Powered · Graph Analysis · CAG-Validated
+  </div>
+  <h1 class="hero-title">
+    Find India's<br><em>Ghost Beneficiaries</em><br>Before They Cost More
+  </h1>
+  <p class="hero-desc">
+    Upload any welfare beneficiary CSV. Our system uses Groq AI to surface
+    duplicate identities, deceased registrations, shared bank fraud rings,
+    and suspicious patterns — with natural-language explanations for every flag.
+  </p>
+
+  <div class="hero-stats">
+    <div class="stat-card">
+      <div class="stat-val" id="su1">₹0</div>
+      <div class="stat-lbl">Est. Annual Leakage (India)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="su2">0</div>
+      <div class="stat-lbl">Ghost Beneficiaries/Year</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="su3">0%</div>
+      <div class="stat-lbl">Detection Accuracy</div>
+    </div>
+  </div>
+
+  <div class="upload-zone" id="dz">
+    <input type="file" id="file-input" accept=".csv">
+    <span class="upload-icon">📂</span>
+    <div class="upload-main">Drop a CSV file here to begin</div>
+    <div class="upload-hint">or <span>click to browse</span> · Up to 50,000 records supported</div>
+  </div>
+
+  <button class="btn-demo" id="btn-demo">▶  Try with 1,000 sample records</button>
+  <div id="ai-notice">Checking AI availability...</div>
+</div>
+
+<!-- ═══ PROGRESS SCREEN ═════════════════════════════════════════ -->
+<div id="progress-screen" class="screen">
+  <div class="pg-title">Analyzing dataset</div>
+  <div class="pg-file" id="pg-file">Please wait...</div>
+  <div class="pg-pct" id="pg-pct">0%</div>
+  <div class="pg-track"><div class="pg-fill" id="pg-fill"></div></div>
+  <div class="pg-steps" id="pg-steps">
+    <div class="pg-step" id="ps0"><div class="pg-dot"></div>Reading and parsing CSV</div>
+    <div class="pg-step" id="ps1"><div class="pg-dot"></div>Checking duplicate Aadhaar numbers</div>
+    <div class="pg-step" id="ps2"><div class="pg-dot"></div>Scanning bank account networks</div>
+    <div class="pg-step" id="ps3"><div class="pg-dot"></div>Flagging address concentrations</div>
+    <div class="pg-step" id="ps4"><div class="pg-dot"></div>Checking beneficiary ages</div>
+    <div class="pg-step" id="ps5"><div class="pg-dot"></div>Running AI risk scoring (Groq)</div>
+    <div class="pg-step" id="ps6"><div class="pg-dot"></div>Building fraud network graph</div>
+    <div class="pg-step" id="ps7"><div class="pg-dot"></div>Compiling final report</div>
+  </div>
+</div>
+
+<!-- ═══ DASHBOARD ════════════════════════════════════════════════ -->
+<div id="dash-screen" class="screen">
+
+  <!-- Nav -->
+  <div class="dash-nav">
+    <div class="nav-brand">
+      <div class="live-dot"></div>
+      GhostAudit
+    </div>
+    <div class="nav-right">
+      <span class="ai-badge off" id="ai-badge">Checking...</span>
+      <button class="btn-new" onclick="reset()">+ New Audit</button>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="kpi-label">Records Scanned</div>
+      <div class="kpi-val" id="k-total" style="color:var(--blue)">—</div>
+      <div class="kpi-sub">Total beneficiaries processed</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Flagged Cases</div>
+      <div class="kpi-val" id="k-flagged" style="color:var(--red)">—</div>
+      <div class="kpi-sub" id="k-rate">Requires investigation</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">High Risk</div>
+      <div class="kpi-val" id="k-high" style="color:var(--red)">—</div>
+      <div class="kpi-sub">Immediate action needed</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Estimated Leakage</div>
+      <div class="kpi-val" id="k-leak" style="color:var(--amber)">—</div>
+      <div class="kpi-sub">Potential loss detected</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs-bar">
+    <button class="tab on" onclick="tab('overview',this)">Overview</button>
+    <button class="tab" onclick="tab('cases',this)">Flagged Cases</button>
+    <button class="tab" onclick="tab('graph',this)">Fraud Network</button>
+  </div>
+
+  <!-- Views -->
+  <div class="dash-body">
+
+    <!-- Overview -->
+    <div id="v-overview" class="view on">
+      <div class="grid-2" style="margin-bottom:16px">
+        <div class="panel">
+          <div class="panel-title">Risk Distribution</div>
+          <div class="ch-wrap"><canvas id="ch-risk"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Anomaly Types</div>
+          <div class="ch-wrap"><canvas id="ch-anom"></canvas></div>
+        </div>
+      </div>
+      <div class="grid-2" style="margin-bottom:16px">
+        <div class="panel">
+          <div class="panel-title">Top Districts by Flagged Cases</div>
+          <div class="ch-wrap"><canvas id="ch-dist"></canvas></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Cases by Scheme</div>
+          <div class="ch-wrap"><canvas id="ch-sch"></canvas></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-title">Top 5 Highest Risk Cases</div>
+        <div id="top5"></div>
+      </div>
+    </div>
+
+    <!-- Cases Table -->
+    <div id="v-cases" class="view">
+      <div class="tbar">
+        <input class="t-search" id="t-q" placeholder="Search name, Aadhaar, scheme, district..." oninput="renderTable()">
+        <select class="t-sel" id="t-risk" onchange="renderTable()">
+          <option value="">All Risk Levels</option>
+          <option value="HIGH">High Risk</option>
+          <option value="MEDIUM">Medium Risk</option>
+          <option value="LOW">Low Risk</option>
+        </select>
+        <select class="t-sel" id="t-sch" onchange="renderTable()"></select>
+        <span class="t-count" id="t-count"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th onclick="sort('name')">Beneficiary</th>
+            <th onclick="sort('scheme')">Scheme</th>
+            <th onclick="sort('district')">District</th>
+            <th onclick="sort('amount')">Amount</th>
+            <th>Flags</th>
+            <th onclick="sort('risk_score')">Score</th>
+            <th>Risk</th>
+          </tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pag"></div>
+    </div>
+
+    <!-- Graph -->
+    <div id="v-graph" class="view">
+      <div class="panel" style="margin-bottom:14px">
+        <div class="panel-title">Fraud Ring Network — Connected Entity Graph</div>
+        <p style="font-size:12px;color:var(--sub);margin-bottom:12px;line-height:1.6">
+          Nodes sharing bank accounts or Aadhaar numbers are connected —
+          this is the fraud ring signature. Click any person node to open the case file.
+        </p>
+        <div class="graph-legend">
+          <div class="gl-item"><div class="gl-dot" style="background:#1d4ed8"></div>Shared Bank (Hub)</div>
+          <div class="gl-item"><div class="gl-dot" style="background:#7c3aed"></div>Shared Aadhaar (Hub)</div>
+          <div class="gl-item"><div class="gl-dot" style="background:var(--red)"></div>High Risk Person</div>
+          <div class="gl-item"><div class="gl-dot" style="background:var(--amber)"></div>Medium Risk</div>
+          <div class="gl-item"><div class="gl-dot" style="background:var(--green)"></div>Low Risk</div>
+        </div>
+      </div>
+      <div id="cy" style="position:relative">
+        <div class="graph-tip" id="gtip"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ SIDEBAR ══════════════════════════════════════════════════ -->
+<div id="sidebar">
+  <div class="sb-head">
+    <div class="sb-title">Case Investigation</div>
+    <button class="sb-close" onclick="closeSB()">✕</button>
+  </div>
+  <div class="sb-body" id="sb-body"></div>
+</div>
+
+<script>
+/* ─── State ─────────────────────────────────────────── */
+let DATA = { cases:[], analytics:{}, summary:{}, graph:{} };
+let sortKey = 'risk_score', sortDir = -1, page = 1, pageSize = 25;
+let cy = null, backendOk = false, aiActive = false, aiProvider = 'none';
+
+/* ─── Backend Check ─────────────────────────────────── */
+async function checkBackend() {
+  const bar    = document.getElementById('status-bar');
+  const txt    = document.getElementById('status-text');
+  const notice = document.getElementById('ai-notice');
+
+  try {
+    const r = await fetch('/status', { signal: AbortSignal.timeout(4000) });
+    const d = await r.json();
+    backendOk  = true;
+    aiActive   = d.ai_active;
+    aiProvider = d.provider || 'none';
+
+    if (aiActive) {
+      bar.className = 'checking ok-ai';
+      bar.querySelector('.sb-dot').style.color = 'var(--green)';
+      txt.textContent = `Backend connected · AI active (${aiProvider.toUpperCase()} — ${d.model || 'LLaMA 3.1 70B'})`;
+      notice.textContent = `AI Mode: ${aiProvider.toUpperCase()} — Each case will receive a real AI-generated explanation`;
+      notice.style.color = 'var(--green)';
+    } else {
+      bar.className = 'checking ok-noai';
+      bar.querySelector('.sb-dot').style.color = 'var(--amber)';
+      txt.textContent = 'Backend connected · No AI key found — add GROQ_KEY to .env for AI explanations';
+      notice.textContent = 'No API key — detection will run but case explanations will be limited. Get a free Groq key at console.groq.com';
+      notice.style.color = 'var(--amber)';
+    }
+  } catch(e) {
+    backendOk = false;
+    bar.className = 'checking no-backend';
+    bar.querySelector('.sb-dot').style.color = 'var(--red)';
+    txt.textContent = 'Backend offline — run: python app.py (Demo mode available below)';
+    notice.textContent = 'Server not running. Start with: python app.py — then reload this page.';
+    notice.style.color = 'var(--red)';
+  }
+}
+
+/* ─── Upload Zone ───────────────────────────────────── */
+const dz = document.getElementById('dz');
+const fi = document.getElementById('file-input');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop',      e => { e.preventDefault(); dz.classList.remove('over'); if(e.dataTransfer.files[0]) doUpload(e.dataTransfer.files[0]); });
+fi.addEventListener('change',    () => { if(fi.files[0]) doUpload(fi.files[0]); });
+document.getElementById('btn-demo').addEventListener('click', runDemo);
+
+/* Animated counter */
+function anim(el, target, pre='', suf='') {
+  let v=0, steps=45;
+  const iv = setInterval(() => {
+    v = Math.min(v + target/steps, target);
+    el.textContent = pre + Math.round(v).toLocaleString('en-IN') + suf;
+    if (v >= target) clearInterval(iv);
+  }, 35);
+}
+setTimeout(() => {
+  anim(document.getElementById('su1'), 80000, '₹', ' Cr+');
+  anim(document.getElementById('su2'), 2400000, '', '+');
+  anim(document.getElementById('su3'), 98, '', '%');
+}, 400);
+
+/* ─── Progress Animation ────────────────────────────── */
+async function showProgress(filename) {
+  show('progress');
+  document.getElementById('pg-file').textContent = 'Analyzing: ' + filename;
+  const fill  = document.getElementById('pg-fill');
+  const pct   = document.getElementById('pg-pct');
+  const steps = Array.from({length:8}, (_,i) => document.getElementById('ps'+i));
+  let i = 0;
+
+  return new Promise(resolve => {
+    const iv = setInterval(() => {
+      if (i > 0) { steps[i-1].classList.remove('active'); steps[i-1].classList.add('done'); }
+      if (i < 8) steps[i].classList.add('active');
+      const p = Math.round((i+1)/8 * 88);
+      fill.style.width = p+'%'; pct.textContent = p+'%';
+      i++;
+      if (i > 8) {
+        clearInterval(iv);
+        fill.style.width = '100%'; pct.textContent = '100%';
+        setTimeout(resolve, 300);
+      }
+    }, 350);
+  });
+}
+
+/* ─── Real File Upload ──────────────────────────────── */
+async function doUpload(file) {
+  if (!backendOk) {
+    alert('The backend server is not running.\n\nStart it with:\n  python app.py\n\nThen reload this page and try again.');
+    return;
+  }
+  await showProgress(file.name);
+  const fd = new FormData(); fd.append('file', file);
+  try {
+    const r = await fetch('/upload', { method: 'POST', body: fd });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.error || 'Server error ' + r.status);
+    }
+    loadDashboard(await r.json());
+  } catch(e) {
+    alert('Upload failed: ' + e.message);
+    reset();
+  }
+}
+
+/* ─── Demo Mode ─────────────────────────────────────── */
+async function runDemo() {
+  await showProgress('sample_data.csv (1,000 records)');
+  loadDashboard(DEMO);
+}
+
+/* ─── Load Dashboard ─────────────────────────────────── */
+function loadDashboard(d) {
+  DATA = d;
+  show('dash');
+
+  const badge = document.getElementById('ai-badge');
+  if (d.ai_used || (d.mode === 'real' && aiActive)) {
+    badge.textContent = '✓ AI: ' + (d.provider || aiProvider).toUpperCase();
+    badge.className   = 'ai-badge on';
+  } else if (d.mode === 'real') {
+    badge.textContent = '⚡ Pattern Detection';
+    badge.className   = 'ai-badge off';
+  } else {
+    badge.textContent = '▶ Demo Mode';
+    badge.className   = 'ai-badge off';
+  }
+
+  const s = d.summary;
+  anim(document.getElementById('k-total'),   s.total   || 0);
+  anim(document.getElementById('k-flagged'), s.flagged || 0);
+  anim(document.getElementById('k-high'),    s.high    || 0);
+
+  const lk = s.leakage || 0;
+  setTimeout(() => {
+    document.getElementById('k-leak').textContent =
+      lk >= 1e7 ? '₹' + (lk/1e7).toFixed(1) + ' Cr'
+    : lk >= 1e5 ? '₹' + (lk/1e5).toFixed(1) + 'L'
+    : '₹' + lk.toLocaleString('en-IN');
+  }, 600);
+
+  document.getElementById('k-rate').textContent = (s.rate || 0) + '% of records flagged';
+  renderCharts(d.analytics, s);
+  renderTop5();
+  renderTable();
+  populateSchemes();
+}
+
+/* ─── Charts ─────────────────────────────────────────── */
+function mkChart(id, type, labels, datasets, opts={}) {
+  const el = document.getElementById(id);
+  if (el._ch) el._ch.destroy();
+  el._ch = new Chart(el, {
+    type,
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#8ba0bb', font: { size: 11 } }, position: opts.lp || 'bottom' } },
+      scales: (type === 'bar') ? {
+        x: { ticks: { color: '#8ba0bb', font:{size:10} }, grid: { color: '#1e2d45' } },
+        y: { ticks: { color: '#8ba0bb', font:{size:10} }, grid: { color: '#1e2d45' } }
+      } : {},
+      ...opts
+    }
+  });
+}
+
+function renderCharts(a, s) {
+  mkChart('ch-risk', 'doughnut',
+    ['High','Medium','Low','Clean'],
+    [{
+      data: [s.high, s.medium, s.low, s.clean],
+      backgroundColor: ['rgba(232,85,85,.8)','rgba(240,168,67,.8)','rgba(52,201,122,.8)','rgba(30,45,69,.9)'],
+      borderColor:     ['#e85555','#f0a843','#34c97a','#2d4060'],
+      borderWidth: 2, hoverOffset: 4
+    }],
+    { lp: 'right' }
+  );
+
+  const typeMap = {
+    DUPLICATE_AADHAAR: 'Dup Aadhaar', SHARED_BANK: 'Shared Bank',
+    ADDRESS_BOMB: 'Addr Bomb',   FABRICATED_BANK: 'Fake Account',
+    LIKELY_DECEASED: 'Deceased', AMOUNT_ANOMALY: 'Amt Anomaly',
+    MISSING_MOBILE: 'No Mobile'
+  };
+  const at = a.by_type || {};
+  const ak = Object.keys(at).filter(k => at[k] > 0);
+  mkChart('ch-anom', 'bar',
+    ak.map(k => typeMap[k] || k),
+    [{ data: ak.map(k=>at[k]), backgroundColor: 'rgba(78,142,247,.7)', borderColor: '#4e8ef7', borderWidth:1, borderRadius:4 }]
+  );
+
+  const bd = a.by_district || {}, dk = Object.keys(bd).slice(0,8);
+  mkChart('ch-dist', 'bar', dk,
+    [{ data: dk.map(k=>bd[k]), backgroundColor:'rgba(232,85,85,.6)', borderColor:'#e85555', borderWidth:1, borderRadius:4 }],
+    { indexAxis: 'y' }
+  );
+
+  const bs = a.by_scheme || {}, sk = Object.keys(bs);
+  const cols = ['rgba(78,142,247,.8)','rgba(155,108,247,.8)','rgba(52,201,122,.8)','rgba(240,168,67,.8)','rgba(232,85,85,.8)','rgba(20,184,166,.8)','rgba(244,63,94,.8)','rgba(251,191,36,.8)'];
+  mkChart('ch-sch', 'doughnut', sk,
+    [{ data: sk.map(k=>bs[k]), backgroundColor: cols, borderWidth:1 }],
+    { lp: 'right' }
+  );
+}
+
+/* ─── Top 5 ──────────────────────────────────────────── */
+function renderTop5() {
+  const top = DATA.cases.slice(0,5);
+  document.getElementById('top5').innerHTML = top.map((c,i) => `
+    <div onclick="openCase(${c.id})"
+      style="display:flex;align-items:center;gap:13px;padding:12px 0;border-top:1px solid var(--s2);cursor:pointer"
+      onmouseover="this.style.background='rgba(78,142,247,.03)'"
+      onmouseout="this.style.background=''">
+      <div style="font-size:11px;font-weight:700;color:var(--dim);min-width:20px;text-align:center">#${i+1}</div>
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:13px">${c.name}</div>
+        <div style="font-size:11px;color:var(--sub)">${c.scheme} · ${c.district}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;font-weight:600;color:var(--amber)">₹${c.amount.toLocaleString('en-IN')}</div>
+        <div style="font-size:11px;color:var(--dim)">${c.anomalies.length} flag${c.anomalies.length!==1?'s':''}</div>
+      </div>
+      <div class="badge badge-${c.risk_level}">${c.risk_score}/100</div>
+    </div>`).join('');
+}
+
+/* ─── Table ──────────────────────────────────────────── */
+function populateSchemes() {
+  const schs = [...new Set(DATA.cases.map(c=>c.scheme))].sort();
+  document.getElementById('t-sch').innerHTML =
+    '<option value="">All Schemes</option>' + schs.map(s=>`<option>${s}</option>`).join('');
+}
+
+function getFiltered() {
+  const q  = (document.getElementById('t-q').value||'').toLowerCase();
+  const fr = document.getElementById('t-risk').value;
+  const fs = document.getElementById('t-sch').value;
+  return DATA.cases
+    .filter(c => {
+      const m = !q || (c.name+c.district+c.scheme+c.aadhaar).toLowerCase().includes(q);
+      return m && (!fr || c.risk_level===fr) && (!fs || c.scheme===fs);
+    })
+    .sort((a,b) => {
+      const av=a[sortKey]||0, bv=b[sortKey]||0;
+      return typeof av==='string' ? av.localeCompare(bv)*sortDir : (av-bv)*sortDir;
+    });
+}
+
+function renderTable() {
+  const f = getFiltered(), total = f.length, pages = Math.ceil(total/pageSize);
+  if (page > pages) page = 1;
+  const slice = f.slice((page-1)*pageSize, page*pageSize);
+
+  document.getElementById('t-count').textContent = `${slice.length} of ${total} flagged`;
+
+  const scoreColor = c =>
+    c.risk_level==='HIGH' ? 'var(--red)' : c.risk_level==='MEDIUM' ? 'var(--amber)' : 'var(--green)';
+
+  document.getElementById('tbody').innerHTML = slice.map(c => `
+    <tr onclick="openCase(${c.id})">
+      <td>
+        <div style="font-weight:600">${c.name}</div>
+        <div style="font-size:11px;color:var(--dim)">${c.aadhaar}</div>
+      </td>
+      <td>${c.scheme}</td>
+      <td>${c.district}</td>
+      <td style="font-weight:600">₹${c.amount.toLocaleString('en-IN')}</td>
+      <td>
+        ${c.anomalies.slice(0,2).map(a=>`<span class="anom-pill">${a.substring(0,30)}${a.length>30?'…':''}</span>`).join('')}
+        ${c.anomalies.length>2 ? `<span class="anom-pill">+${c.anomalies.length-2}</span>` : ''}
+      </td>
+      <td>
+        <div class="score-bar">
+          <div class="sbar-track">
+            <div class="sbar-fill" style="width:${c.risk_score}%;background:${scoreColor(c)}"></div>
+          </div>
+          <span style="font-size:11px;font-weight:700;min-width:28px;text-align:right;color:${scoreColor(c)}">${c.risk_score}</span>
+        </div>
+      </td>
+      <td><span class="badge badge-${c.risk_level}">${c.risk_level}</span></td>
+    </tr>`).join('');
+
+  const pagEl = document.getElementById('pag'); pagEl.innerHTML = '';
+  for (let i=1; i<=Math.min(pages,7); i++) {
+    const b = document.createElement('button');
+    b.className = 'pg-btn' + (i===page ? ' on' : '');
+    b.textContent = i;
+    b.onclick = () => { page=i; renderTable(); };
+    pagEl.appendChild(b);
+  }
+}
+function sort(k) { if(sortKey===k) sortDir*=-1; else{sortKey=k;sortDir=-1;} renderTable(); }
+
+/* ─── Fraud Network Graph ────────────────────────────── */
+function initGraph() {
+  const g = DATA.graph;
+  if (!g || !g.nodes || g.nodes.length === 0) {
+    document.getElementById('cy').innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--dim);font-size:13px">No fraud clusters found in this dataset</div>';
+    return;
+  }
+
+  cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements: [...g.nodes, ...g.edges],
+    style: [
+      { selector: 'node[nodeType="bank"]',
+        style: { 'background-color':'#1d4ed8','border-color':'#3b82f6','border-width':2,
+                 'label':'data(label)','color':'#93c5fd','font-size':9,'width':52,'height':52,
+                 'text-valign':'center','text-halign':'center','text-wrap':'wrap','text-max-width':46,'font-weight':700 }},
+      { selector: 'node[nodeType="aadhaar"]',
+        style: { 'background-color':'#6d28d9','border-color':'#8b5cf6','border-width':2,
+                 'label':'data(label)','color':'#c4b5fd','font-size':9,'width':52,'height':52,
+                 'text-valign':'center','text-halign':'center','text-wrap':'wrap','text-max-width':46,'font-weight':700 }},
+      { selector: 'node[nodeType="person"][risk="HIGH"]',
+        style: { 'background-color':'#7f1d1d','border-color':'#e85555','border-width':2,
+                 'label':'data(label)','color':'#fca5a5','font-size':8,'width':36,'height':36,
+                 'text-valign':'bottom','text-halign':'center','text-margin-y':3 }},
+      { selector: 'node[nodeType="person"][risk="MEDIUM"]',
+        style: { 'background-color':'#78350f','border-color':'#f0a843','border-width':2,
+                 'label':'data(label)','color':'#fcd34d','font-size':8,'width':30,'height':30,
+                 'text-valign':'bottom','text-halign':'center','text-margin-y':3 }},
+      { selector: 'node[nodeType="person"][risk="LOW"]',
+        style: { 'background-color':'#14532d','border-color':'#34c97a','border-width':1.5,
+                 'label':'data(label)','color':'#86efac','font-size':8,'width':24,'height':24,
+                 'text-valign':'bottom','text-halign':'center','text-margin-y':3 }},
+      { selector: 'node:selected', style: { 'border-width':3,'border-color':'#ffffff' }},
+      { selector: 'edge[etype="shared_bank"]',
+        style: { 'line-color':'rgba(59,130,246,0.4)','width':1.5,'curve-style':'bezier','target-arrow-shape':'none' }},
+      { selector: 'edge[etype="shared_aadhaar"]',
+        style: { 'line-color':'rgba(139,92,246,0.4)','width':1.5,'curve-style':'bezier','target-arrow-shape':'none' }},
+    ],
+    layout: { name:'cose', animate:true, animationDuration:600, randomize:true, nodeRepulsion:9500, gravity:0.3, numIter:900 },
+    minZoom: 0.2, maxZoom: 3
+  });
+
+  const tip = document.getElementById('gtip');
+  cy.on('mouseover', 'node', e => {
+    const d = e.target.data(); tip.style.display = 'block';
+    if (d.nodeType === 'person')
+      tip.innerHTML = `<strong>${d.label}</strong><br>${d.scheme||''}<br><span style="color:var(--amber)">₹${(d.amount||0).toLocaleString('en-IN')}</span> · <span class="badge badge-${d.risk||'LOW'}" style="font-size:10px;padding:1px 6px">${d.risk||''}</span>`;
+    else
+      tip.innerHTML = `<strong>${d.label}</strong><br>${d.count||0} connected accounts`;
+  });
+  cy.on('mouseout', 'node', () => tip.style.display = 'none');
+  cy.on('tap', 'node', e => { const d=e.target.data(); if(d.nodeType==='person'&&d.caseId) openCase(d.caseId); });
+  cy.on('mousemove', e => {
+    const rect = document.getElementById('cy').getBoundingClientRect();
+    tip.style.left = (e.originalEvent.clientX - rect.left + 14) + 'px';
+    tip.style.top  = (e.originalEvent.clientY - rect.top  + 14) + 'px';
+  });
+}
+
+/* ─── Case Sidebar ───────────────────────────────────── */
+async function openCase(id) {
+  const c = DATA.cases.find(x => x.id === id); if (!c) return;
+  const col = c.risk_level==='HIGH' ? 'var(--red)' : c.risk_level==='MEDIUM' ? 'var(--amber)' : 'var(--green)';
+  const r = c.risk_score;
+  const circ = 2 * Math.PI * 42;
+
+  document.getElementById('sb-body').innerHTML = `
+    <div class="ring-wrap">
+      <svg width="100" height="100" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="42" fill="none" stroke="var(--s2)" stroke-width="8"/>
+        <circle cx="50" cy="50" r="42" fill="none" stroke="${col}" stroke-width="8"
+          stroke-dasharray="${circ}" stroke-dashoffset="${circ-(r/100)*circ}" stroke-linecap="round"
+          style="transition:stroke-dashoffset .9s ease"/>
+      </svg>
+      <div class="ring-center">
+        <div class="ring-val" style="color:${col}">${r}</div>
+        <div class="ring-lbl">RISK</div>
+      </div>
+    </div>
+    <div class="case-name">${c.name}</div>
+    <div class="case-meta">${c.scheme} · ${c.district} · Age ${c.age || '?'}</div>
+
+    <div class="section">
+      <div class="section-label">Detected Anomalies (${c.anomalies.length})</div>
+      ${c.anomalies.map(a => `
+        <div class="anom-row">
+          <div class="anom-icon">⚠</div>
+          <div>${a}</div>
+        </div>`).join('')}
+    </div>
+
+    <div class="section">
+      <div class="section-label">Beneficiary Details</div>
+      <div class="detail-grid">
+        <div class="detail-cell"><div class="detail-label">Aadhaar</div><div class="detail-val">${c.aadhaar}</div></div>
+        <div class="detail-cell"><div class="detail-label">Bank Account</div><div class="detail-val">${c.bank_account}</div></div>
+        <div class="detail-cell"><div class="detail-label">Amount Disbursed</div><div class="detail-val" style="color:var(--amber)">₹${c.amount.toLocaleString('en-IN')}</div></div>
+        <div class="detail-cell"><div class="detail-label">Date of Birth</div><div class="detail-val">${c.dob}</div></div>
+        <div class="detail-cell"><div class="detail-label">Mobile</div><div class="detail-val">${c.mobile && c.mobile !== 'nan' ? c.mobile : '— Not provided'}</div></div>
+        <div class="detail-cell"><div class="detail-label">Registration Date</div><div class="detail-val">${c.registration_date || '—'}</div></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">AI Audit Assessment</div>
+      <div class="ai-panel" id="ai-panel">
+        <div class="ai-header" id="ai-header">
+          <div class="ai-pulse"></div>
+          <span>Analyzing case with Groq AI...</span>
+        </div>
+        <div class="ai-text" id="ai-text" style="color:var(--sub);font-style:italic">
+          Generating assessment...
+        </div>
+        <div id="ai-extras"></div>
+      </div>
+    </div>
+
+    <button class="btn-freeze" onclick="issueFreeze(${c.id}, '${c.name.replace(/'/g,"\\'")}')">
+      🔒  Issue Payment Freeze Order
+    </button>
+    <button class="btn-report" onclick="genReport(${c.id})">
+      📄  Generate Audit Report
+    </button>
+  `;
+
+  document.getElementById('sidebar').classList.add('open');
+  await fetchExplain(c);
+}
+
+async function fetchExplain(c) {
+  const textEl   = document.getElementById('ai-text');
+  const extEl    = document.getElementById('ai-extras');
+  const headerEl = document.getElementById('ai-header');
+  if (!textEl) return;
+
+  if (!backendOk) {
+    headerEl.innerHTML = '<div class="ai-pulse"></div><span>Backend offline</span>';
+    textEl.style.cssText = '';
+    textEl.textContent = 'Start python app.py and add your Groq API key to .env to enable AI-powered analysis.';
+    return;
+  }
+
+  try {
+    const res = await fetch('/explain', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(c)
+    });
+    const d = await res.json();
+
+    const providerLabel = d.ai_enabled
+      ? `✓ ${(d.provider||'AI').toUpperCase()} Analysis`
+      : '⚠ AI Not Available';
+
+    headerEl.innerHTML = `<div class="ai-pulse"></div><span>${providerLabel}</span>`;
+
+    const assessment = d.assessment || 'No assessment available.';
+    textEl.style.cssText = ''; textEl.textContent = '';
+
+    // Typewriter effect
+    let i = 0;
+    const iv = setInterval(() => {
+      textEl.textContent += assessment[i] || '';
+      i++;
+      if (i >= assessment.length) clearInterval(iv);
+    }, 14);
+
+    // Render supporting blocks after typewriter
+    setTimeout(() => {
+      let html = '';
+      if (d.fraud_type)
+        html += `<div class="fraud-tag">⚡ ${d.fraud_type}</div>`;
+      if (d.action)
+        html += `<div class="info-block green"><div class="info-block-label">✓ Recommended Action</div>${d.action}</div>`;
+      if (d.recovery)
+        html += `<div class="info-block amber"><div class="info-block-label">₹ Estimated Recovery</div>${d.recovery}</div>`;
+      if (d.notes)
+        html += `<div class="info-block blue"><div class="info-block-label">🔎 Investigation Notes</div>${d.notes}</div>`;
+      if (d.provider)
+        html += `<div class="ai-provider">Powered by ${d.provider}</div>`;
+      if (extEl) extEl.innerHTML = html;
+    }, assessment.length * 14 + 500);
+
+  } catch(e) {
+    headerEl.innerHTML = '<div class="ai-pulse"></div><span>AI request failed</span>';
+    textEl.style.cssText = '';
+    textEl.textContent = 'Could not reach the AI service. Check that the backend is running and the Groq API key is valid.';
+  }
+}
+
+function issueFreeze(id, name) {
+  const ref = 'GHA-' + String(id).padStart(5,'0');
+  alert(`Payment Freeze Order Issued\n\nCase: #${id} — ${name}\nReference: ${ref}\n\nForward this reference to your Block Development Officer to initiate the hold.`);
+}
+
+function closeSB() { document.getElementById('sidebar').classList.remove('open'); }
+
+/* ─── Audit Report ───────────────────────────────────── */
+function genReport(id) {
+  const c = DATA.cases.find(x => x.id === id); if (!c) return;
+  const ref = 'GHA-' + String(id).padStart(5,'0');
+  const w = window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><title>Audit Report ${ref}</title>
+  <style>
+    body{font-family:Arial,sans-serif;max-width:680px;margin:40px auto;color:#111;line-height:1.65;font-size:14px}
+    h1{color:#1d4ed8;font-size:21px;margin-bottom:4px}
+    h2{font-size:13px;color:#555;margin:22px 0 8px;border-bottom:1px solid #eee;padding-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+    .meta{font-size:11px;color:#999;margin-bottom:10px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+    .cell{background:#f8f9fc;padding:10px;border-radius:5px}
+    .lbl{font-size:10px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+    .val{font-size:13px;font-weight:600;margin-top:2px}
+    .flag{background:#fff5f5;border-left:3px solid #e85555;padding:8px 11px;margin:5px 0;font-size:12px;border-radius:0 4px 4px 0}
+    .badge{display:inline-block;padding:2px 10px;border-radius:99px;font-size:11px;font-weight:700;
+           background:${c.risk_level==='HIGH'?'#fee2e2;color:#dc2626':c.risk_level==='MEDIUM'?'#fef3c7;color:#d97706':'#dcfce7;color:#16a34a'}}
+    .action-box{background:#f0fdf4;padding:12px;border-radius:5px;border-left:3px solid #22c55e;font-size:13px}
+    .footer{font-size:10px;color:#aaa;margin-top:40px;border-top:1px solid #eee;padding-top:10px}
+  </style>
+  </head><body>
+  <h1>GhostAudit — Audit Report</h1>
+  <div class="meta">Generated: ${new Date().toLocaleString('en-IN')} · Reference: ${ref}</div>
+  <hr style="border:none;border-top:1px solid #eee;margin:10px 0">
+  <h2>Case ${ref} — <span class="badge">${c.risk_level} RISK · Score ${c.risk_score}/100</span></h2>
+  <div class="grid">
+    <div class="cell"><div class="lbl">Beneficiary</div><div class="val">${c.name}</div></div>
+    <div class="cell"><div class="lbl">Scheme</div><div class="val">${c.scheme}</div></div>
+    <div class="cell"><div class="lbl">District</div><div class="val">${c.district}</div></div>
+    <div class="cell"><div class="lbl">Amount</div><div class="val" style="color:#d97706">₹${c.amount.toLocaleString('en-IN')}</div></div>
+    <div class="cell"><div class="lbl">Aadhaar</div><div class="val">${c.aadhaar}</div></div>
+    <div class="cell"><div class="lbl">Bank Account</div><div class="val">${c.bank_account}</div></div>
+    <div class="cell"><div class="lbl">Date of Birth</div><div class="val">${c.dob} (Age ${c.age})</div></div>
+    <div class="cell"><div class="lbl">Mobile</div><div class="val">${c.mobile && c.mobile !== 'nan' ? c.mobile : 'Not Provided'}</div></div>
+  </div>
+  <h2>Anomalies Detected (${c.anomalies.length})</h2>
+  ${c.anomalies.map(a => `<div class="flag">⚠ ${a}</div>`).join('')}
+  <h2>Recommended Action</h2>
+  <div class="action-box">
+    Suspend all disbursements under case ${ref} with immediate effect.
+    Initiate mandatory field verification via the Block Development Officer.
+    Cross-reference with UIDAI Aadhaar registry and district death records.
+    Reference: <strong>${ref}</strong>
+  </div>
+  <div class="footer">
+    This report is generated by GhostAudit. All findings must be independently
+    verified by a field officer before punitive action is taken.
+  </div>
+  </body></html>`);
+  w.print();
+}
+
+/* ─── Utils ──────────────────────────────────────────── */
+function show(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(name+'-screen').classList.add('active');
+}
+function tab(name, btn) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('on'));
+  document.getElementById('v-'+name).classList.add('on');
+  btn.classList.add('on');
+  if (name === 'graph' && !cy) setTimeout(initGraph, 80);
+}
+function reset() {
+  show('upload');
+  document.getElementById('file-input').value = '';
+  if (cy) { cy.destroy(); cy = null; }
+}
+
+/* ─── Demo Data ──────────────────────────────────────── */
+const DEMO = {
+  mode:'demo', ai_used:false,
+  summary:{total:1000,flagged:147,high:89,medium:38,low:20,clean:853,leakage:7842600,rate:14.7},
+  analytics:{
+    by_district:{Barpeta:18,Kamrup:14,Nagaon:12,Lakhimpur:11,Gorakhpur:9,Varanasi:8,Dhubri:7,Lucknow:6},
+    by_scheme:{'PM-KISAN':35,'MGNREGA':28,'PM Awas Yojana':22,'Ayushman Bharat':19,'PMKVY Skill Dev':15,'NSP Scholarship':12,'NSAP Pension':16},
+    by_type:{DUPLICATE_AADHAAR:13,SHARED_BANK:39,ADDRESS_BOMB:25,FABRICATED_BANK:10,LIKELY_DECEASED:15,AMOUNT_ANOMALY:8,MISSING_MOBILE:10}
+  },
+  cases:[
+    {id:1,name:'Geeta Devi',aadhaar:'487293847561',bank_account:'11111111111',bank_name:'State Bank of India',address:'Plot No.1, Near Bus Stand, Main Road, Barpeta',district:'Barpeta',scheme:'PM-KISAN',amount:245800,dob:'1918-03-12',age:106,mobile:'',registration_date:'2019-08-14',
+     anomalies:['Aadhaar linked to 8 different beneficiaries','Bank account digits show artificial pattern','Beneficiary is 106 years old — probable deceased','No verifiable mobile number on record'],
+     risk_score:99,risk_level:'HIGH',fraud_tags:['DUPLICATE_AADHAAR','FABRICATED_BANK','LIKELY_DECEASED','MISSING_MOBILE'],
+     risk_details:[{type:'DUPLICATE_AADHAAR',count:8},{type:'FABRICATED_BANK'},{type:'LIKELY_DECEASED',age:106},{type:'MISSING_MOBILE'}]},
+    {id:2,name:'Ramesh Kumar',aadhaar:'487293847561',bank_account:'93847261038',bank_name:'Bank of Baroda',address:'House 234, Krishnanagar, Kamrup',district:'Kamrup',scheme:'MGNREGA',amount:14200,dob:'1975-06-21',age:49,mobile:'9876543210',registration_date:'2020-03-10',
+     anomalies:['Aadhaar linked to 8 different beneficiaries'],
+     risk_score:40,risk_level:'MEDIUM',fraud_tags:['DUPLICATE_AADHAAR'],risk_details:[{type:'DUPLICATE_AADHAAR',count:8}]},
+    {id:3,name:'Sunita Singh',aadhaar:'293847561029',bank_account:'99999999999',bank_name:'Punjab National Bank',address:'House 567, Gandhi Nagar, Nagaon',district:'Nagaon',scheme:'Ayushman Bharat',amount:49800,dob:'1982-11-05',age:41,mobile:'8765432109',registration_date:'2021-01-22',
+     anomalies:['Bank account digits show artificial pattern','Bank account shared with 18 beneficiaries'],
+     risk_score:80,risk_level:'HIGH',fraud_tags:['FABRICATED_BANK','SHARED_BANK'],risk_details:[{type:'FABRICATED_BANK'},{type:'SHARED_BANK',count:18}]},
+    {id:4,name:'Vijay Gupta',aadhaar:'765432109876',bank_account:'34892761048',bank_name:'Canara Bank',address:'Plot No.1, Near Bus Stand, Main Road, Barpeta',district:'Barpeta',scheme:'NSAP Pension',amount:5800,dob:'1921-09-08',age:102,mobile:'',registration_date:'2017-05-19',
+     anomalies:['Beneficiary is 102 years old — probable deceased','No verifiable mobile number on record'],
+     risk_score:50,risk_level:'MEDIUM',fraud_tags:['LIKELY_DECEASED','MISSING_MOBILE'],risk_details:[{type:'LIKELY_DECEASED',age:102},{type:'MISSING_MOBILE'}]},
+    {id:5,name:'Anjali Mishra',aadhaar:'192837465019',bank_account:'73849201847',bank_name:'State Bank of India',address:'House 123, Model Town, Varanasi',district:'Varanasi',scheme:'NSP Scholarship',amount:11400,dob:'1995-02-28',age:29,mobile:'9123456780',registration_date:'2022-04-11',
+     anomalies:['Aadhaar linked to 5 different beneficiaries'],
+     risk_score:40,risk_level:'MEDIUM',fraud_tags:['DUPLICATE_AADHAAR'],risk_details:[{type:'DUPLICATE_AADHAAR',count:5}]},
+    {id:6,name:'Priya Sharma',aadhaar:'102938475610',bank_account:'56473829104',bank_name:'UCO Bank',address:'House 89, Nehru Vihar, Gorakhpur',district:'Gorakhpur',scheme:'PM-KISAN',amount:387400,dob:'1989-07-15',age:35,mobile:'6543210987',registration_date:'2020-07-08',
+     anomalies:['Payment is 4.2σ above scheme average (₹3,87,400)'],
+     risk_score:20,risk_level:'LOW',fraud_tags:['AMOUNT_ANOMALY'],risk_details:[{type:'AMOUNT_ANOMALY',zscore:4.2}]},
+    {id:7,name:'Rajan Tiwari',aadhaar:'847362910485',bank_account:'99999999999',bank_name:'Bank of Baroda',address:'House 778, Shantinagar, Dhubri',district:'Dhubri',scheme:'MGNREGA',amount:2800,dob:'1983-12-17',age:40,mobile:'8901234567',registration_date:'2021-09-30',
+     anomalies:['Bank account shared with 18 beneficiaries'],
+     risk_score:35,risk_level:'MEDIUM',fraud_tags:['SHARED_BANK'],risk_details:[{type:'SHARED_BANK',count:18}]},
+    {id:8,name:'Mohan Yadav',aadhaar:'765432109876',bank_account:'11111111111',bank_name:'Canara Bank',address:'Plot No.1, Near Bus Stand, Main Road, Barpeta',district:'Barpeta',scheme:'PM Awas Yojana',amount:148000,dob:'1978-04-30',age:46,mobile:'7654321098',registration_date:'2018-11-03',
+     anomalies:['25 registrations at this single address','Bank account digits show artificial pattern'],
+     risk_score:70,risk_level:'HIGH',fraud_tags:['ADDRESS_BOMB','FABRICATED_BANK'],risk_details:[{type:'ADDRESS_BOMB',count:25},{type:'FABRICATED_BANK'}]},
+  ],
+  graph:{
+    nodes:[
+      {data:{id:'bank_11111111',label:'Bank\n...1111',nodeType:'bank',count:18}},
+      {data:{id:'bank_99999999',label:'Bank\n...9999',nodeType:'bank',count:12}},
+      {data:{id:'aad_48729384',label:'ID\n...7561',nodeType:'aadhaar',count:8}},
+      {data:{id:'aad_19283746',label:'ID\n...5019',nodeType:'aadhaar',count:5}},
+      {data:{id:'p_1',label:'Geeta Devi',nodeType:'person',risk:'HIGH',score:99,scheme:'PM-KISAN',amount:245800,caseId:1}},
+      {data:{id:'p_2',label:'Ramesh Kumar',nodeType:'person',risk:'MEDIUM',score:40,scheme:'MGNREGA',amount:14200,caseId:2}},
+      {data:{id:'p_3',label:'Sunita Singh',nodeType:'person',risk:'HIGH',score:80,scheme:'Ayushman Bharat',amount:49800,caseId:3}},
+      {data:{id:'p_5',label:'Anjali Mishra',nodeType:'person',risk:'MEDIUM',score:40,scheme:'NSP Scholarship',amount:11400,caseId:5}},
+      {data:{id:'p_7',label:'Rajan Tiwari',nodeType:'person',risk:'MEDIUM',score:35,scheme:'MGNREGA',amount:2800,caseId:7}},
+      {data:{id:'p_8',label:'Mohan Yadav',nodeType:'person',risk:'HIGH',score:70,scheme:'PM Awas Yojana',amount:148000,caseId:8}},
+    ],
+    edges:[
+      {data:{id:'e1',source:'bank_11111111',target:'p_1',etype:'shared_bank'}},
+      {data:{id:'e2',source:'bank_11111111',target:'p_8',etype:'shared_bank'}},
+      {data:{id:'e3',source:'bank_99999999',target:'p_3',etype:'shared_bank'}},
+      {data:{id:'e4',source:'bank_99999999',target:'p_7',etype:'shared_bank'}},
+      {data:{id:'e5',source:'aad_48729384',target:'p_1',etype:'shared_aadhaar'}},
+      {data:{id:'e6',source:'aad_48729384',target:'p_2',etype:'shared_aadhaar'}},
+      {data:{id:'e7',source:'aad_19283746',target:'p_5',etype:'shared_aadhaar'}},
+    ]
+  }
+};
+
+/* ─── Start ──────────────────────────────────────────── */
+checkBackend();
+</script>
+</body>
+</html>
