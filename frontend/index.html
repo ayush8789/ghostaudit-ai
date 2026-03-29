@@ -626,14 +626,14 @@ async function checkBackend() {
     if (aiActive) {
       bar.className = 'checking ok-ai';
       bar.querySelector('.sb-dot').style.color = 'var(--green)';
-      txt.textContent = `Backend connected · AI active (${aiProvider.toUpperCase()} — ${d.model || 'LLaMA 3.1 70B'})`;
+      txt.textContent = `Backend connected · AI active (${aiProvider.toUpperCase()} — OpenRouter model routing enabled)`;
       notice.textContent = `AI Mode: ${aiProvider.toUpperCase()} — Each case will receive a real AI-generated explanation`;
       notice.style.color = 'var(--green)';
     } else {
       bar.className = 'checking ok-noai';
       bar.querySelector('.sb-dot').style.color = 'var(--amber)';
-      txt.textContent = 'Backend connected · No AI key found — add GROQ_KEY to .env for AI explanations';
-      notice.textContent = 'No API key — detection will run but case explanations will be limited. Get a free Groq key at console.groq.com';
+      txt.textContent = 'Backend connected · No AI key found — add OpenRouter KEY to .env for AI explanations';
+      notice.textContent = 'No API key — detection will run but case explanations will be limited.';
       notice.style.color = 'var(--amber)';
     }
   } catch(e) {
